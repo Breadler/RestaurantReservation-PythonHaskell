@@ -51,42 +51,54 @@ Chapter 2 presents the requirements analysis, Chapter 3 explains the design, Cha
 ________________________________________
 2.0 REQUIREMENTS ANALYSIS
 2.1 Project Description
-This project is a Restaurant Reservation System that manages customers, reservations, and tables for a restaurant, implemented independently in Python (OOP) and Haskell (FP).
+This project is a Restaurant Reservation System designed to streamline customer records, reservation scheduling, and table allocation for a restaurant. The system is implemented in two distinct programming paradigms: Object-Oriented Programming (OOP) in Python and Functional Programming (FP) in Haskell, maintaining strict functional parity between both versions.
+
 2.2 Functional Requirements
-Customer Management
-•	Add customer
-•	View customer
-•	Update customer
-•	Delete customer
-Reservation Management
-•	Create reservation
-•	View reservation
-•	Update reservation
-•	Cancel reservation
-Table Management
-•	Display available tables
-•	Assign tables to reservations
-•	Prevent double booking
-Search & Reporting
-•	View all reservations
-•	Search reservations
-•	Filter reservations
-•	Daily reservation summary (optional)
-•	Sorting (optional)
-Input Validation
-•	Validate customer information
-•	Validate reservation date and time
-•	Prevent invalid or incomplete input
+
+Customer Management (Member 2)
+• FR-CUST-01 (Add Customer): The system shall allow staff to register a new customer with a unique ID, full name, phone number, and email address.
+• FR-CUST-02 (View Customer): The system shall retrieve and display an existing customer record by customer ID.
+• FR-CUST-03 (Update Customer): The system shall permit updating a customer's name, phone number, and/or email address while preserving their unique customer ID.
+• FR-CUST-04 (Delete Customer): The system shall allow deleting an existing customer record from memory.
+• FR-CUST-05 (List Customers): The system shall list all registered customers with their IDs and contact details.
+
+Reservation Management (Member 1)
+• FR-RES-01 (Create Reservation): The system shall allow creating a reservation linked to a valid customer and table for a specified date, time, and party size.
+• FR-RES-02 (View Reservation): The system shall retrieve and display reservation details by reservation ID.
+• FR-RES-03 (Update Reservation): The system shall allow updating the date, time, party size, or assigned table of an existing reservation.
+• FR-RES-04 (Cancel Reservation): The system shall support cancelling a reservation, updating its status to Cancelled without deleting the audit history.
+• FR-RES-05 (List Reservations): The system shall list all reservations in the system.
+
+Table Management (Member 3)
+• FR-TBL-01 (Display Available Tables): The system shall compute and display tables available for a given date and time slot.
+• FR-TBL-02 (Assign Tables): The system shall assign a suitable table to a reservation based on party size and availability.
+• FR-TBL-03 (Prevent Double Booking): The system shall reject any reservation attempt that conflicts with an active booking on the same table, date, and time.
+
+Search & Reporting (Member 4)
+• FR-SR-01 (Search by Customer): The system shall retrieve all reservations associated with a specific customer.
+• FR-SR-02 (Filter by Date): The system shall filter reservations scheduled for a specific date.
+• FR-SR-03 (Filter by Status): The system shall filter reservations by status (Active or Cancelled).
+• FR-SR-04 (Daily Summary & Sorting - Optional): The system shall generate daily guest/reservation counts and support chronological sorting.
+
+Input Validation (Shared & Member 2)
+• FR-VAL-01 (Customer Validation): The system shall enforce non-empty names, valid phone formats (7–15 digits), and standard email syntax (`user@domain.tld`).
+• FR-VAL-02 (Reservation Validation): The system shall validate date format (YYYY-MM-DD, rejecting past dates), time format (HH:MM, 24-hour), and ensure party sizes are positive integers (>= 1).
+• FR-VAL-03 (Input Error Handling): The system shall catch validation errors gracefully and re-prompt the user without crashing.
+
 2.3 Non-Functional Requirements
-•	The program must be easy to use via a menu-driven interface.
-•	The code must be modular and readable in both Python and Haskell.
-•	All user input must be validated before being processed.
-•	The system must run without errors and handle invalid input gracefully.
-•	Both implementations must provide the same functionality for a fair comparison.
-2.4 Paradigm Comparison Requirements
-The project compares how the same reservation system is represented in Object-Oriented Programming (Python) and Functional Programming (Haskell), focusing on data structure design, state management (mutable objects vs. immutable data), function/method organization, and overall readability and maintainability.
-2.5 User Requirements
-The intended users are restaurant staff (e.g., hosts or managers) who need to manage customer records, reservations, and table assignments for the restaurant.
+• Usability: The application must provide an intuitive, menu-driven CLI interface with clear feedback and prompt instructions.
+• Reliability & Robustness: The system must handle erroneous and malformed inputs (non-numeric IDs, invalid dates/emails) without crashing or corrupting state.
+• Modularity & Maintainability: Code must be decomposed into dedicated single-responsibility modules matching the four member tasks in both Python and Haskell.
+• Functional Equivalence: Both Python and Haskell implementations must exhibit identical behavior, validation rules, and terminal outputs.
+
+2.4 Assumptions and Limitations
+• In-Memory Storage: The system operates entirely in memory during execution; state is not persisted across application restarts.
+• Single-User Terminal: Designed for sequential, single-terminal access by restaurant staff without concurrency locks or multi-tenant authentication.
+• Time Slot Granularity: Bookings are evaluated on exact date/time matches rather than dynamic reservation duration windows.
+• No External Dependencies: The core system relies strictly on standard language libraries (Python Standard Library and GHC base/time libraries).
+
+2.5 User Requirements & Target Persona
+The primary users are restaurant front-of-house staff, hosts, and managers who need to quickly record bookings, verify customer contact info, inspect table availability, and prevent conflicting reservations during daily operations.
 ________________________________________
 3.0 DESIGN
 3.1 System Overview
