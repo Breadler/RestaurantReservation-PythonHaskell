@@ -7,6 +7,15 @@ and test cases this module feeds into.
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from validation import (
+    ValidationError,
+    validate_email,
+    validate_non_empty_string,
+    validate_phone,
+)
+
+UPDATABLE_FIELDS = {"name", "phone", "email"}
+
 
 @dataclass
 class Customer:
@@ -22,29 +31,53 @@ class CustomerManager:
         self._next_id: int = 1
 
     def add(self, name: str, phone: str, email: str) -> Customer:
-        """Create and store a new customer.
+        """Create and store a new customer after validating fields."""
+        name = validate_non_empty_string(name, "Customer name")
+        phone = validate_phone(phone)
+        email = validate_email(email)
 
-        TODO(Member 2): validate name/phone/email via validation.py before
-        creating the record.
-        """
-        raise NotImplementedError
+        customer = Customer(
+            id=self._next_id,
+            name=name,
+            phone=phone,
+            email=email,
+        )
+        self._customers[customer.id] = customer
+        self._next_id += 1
+        return customer
 
     def view(self, customer_id: int) -> Optional[Customer]:
         """Return the customer with the given ID, or None if not found."""
-        raise NotImplementedError
+        return self._customers.get(customer_id)
 
     def update(self, customer_id: int, **fields) -> Optional[Customer]:
         """Update one or more fields on an existing customer."""
-        raise NotImplementedError
+        customer = self._customers.get(customer_id)
+        if customer is None:
+            return None
+
+        unknown = set(fields) - UPDATABLE_FIELDS
+        if unknown:
+            raise ValidationError(f"Unknown field(s): {', '.join(sorted(unknown))}")
+
+        if "name" in fields:
+            fields["name"] = validate_non_empty_string(fields["name"], "Customer name")
+        if "phone" in fields:
+            fields["phone"] = validate_phone(fields["phone"])
+        if "email" in fields:
+            fields["email"] = validate_email(fields["email"])
+
+        for key, value in fields.items():
+            setattr(customer, key, value)
+        return customer
 
     def delete(self, customer_id: int) -> bool:
-        """Remove a customer. Returns True if a customer was deleted.
-
-        TODO(Member 2): decide how this interacts with existing reservations
-        for the deleted customer (block delete vs. cascade).
-        """
-        raise NotImplementedError
+        """Remove a customer. Returns True if a customer was deleted."""
+        if customer_id in self._customers:
+            del self._customers[customer_id]
+            return True
+        return False
 
     def list_all(self) -> List[Customer]:
         """Return all customers."""
-        raise NotImplementedError
+        return list(self._customers.values())
