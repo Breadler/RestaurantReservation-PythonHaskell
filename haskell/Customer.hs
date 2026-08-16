@@ -5,6 +5,8 @@ module Customer
   , deleteCustomer
   ) where
 
+import Data.List (find)
+
 import Types (Customer (..))
 
 -- | Owner: Member 2. See docs/modules/customer.md for design notes,
@@ -12,20 +14,21 @@ import Types (Customer (..))
 
 -- | Add a new customer, returning the updated list.
 addCustomer :: Customer -> [Customer] -> [Customer]
-addCustomer = error "TODO(Member 2): implement addCustomer"
+addCustomer customer customers = customers ++ [customer]
 
 -- | Find a customer by ID.
 viewCustomer :: Int -> [Customer] -> Maybe Customer
-viewCustomer = error "TODO(Member 2): implement viewCustomer"
+viewCustomer cid = find ((== cid) . customerId)
 
 -- | Apply an update function to the customer with the given ID, returning
--- the updated list.
+-- the updated list (unchanged if customer ID is not found).
 updateCustomer :: Int -> (Customer -> Customer) -> [Customer] -> [Customer]
-updateCustomer = error "TODO(Member 2): implement updateCustomer"
+updateCustomer cid f = map apply
+  where
+    apply c
+      | customerId c == cid = f c
+      | otherwise           = c
 
 -- | Remove a customer by ID, returning the updated list.
---
--- TODO(Member 2): decide how this interacts with existing reservations for
--- the deleted customer (block delete vs. cascade).
 deleteCustomer :: Int -> [Customer] -> [Customer]
-deleteCustomer = error "TODO(Member 2): implement deleteCustomer"
+deleteCustomer cid = filter ((/= cid) . customerId)

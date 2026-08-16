@@ -226,7 +226,7 @@ viewAllTablesPrompt stateRef = do
     else mapM_ printTable (tables state)
   putStrLn ""
   where
-    printTable tbl = 
+    printTable tbl =
       let statusStr = case tableStatus tbl of
                         Ready           -> "Active"
                         UnderMaintenance -> "Under Maintenance"

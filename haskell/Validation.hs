@@ -7,22 +7,55 @@ module Validation
   , validatePartySize
   ) where
 
+import Data.Char (isAlphaNum, isDigit, isSpace)
+import Data.List (isPrefixOf, isSuffixOf)
 import Data.Time (Day, TimeOfDay, defaultTimeLocale, parseTimeM)
 
 -- | Owner: whole group. Each validator returns Left with an error message
 -- on invalid input, or Right with the validated value.
 
--- TODO(Member 2): implement validateNonEmpty
+-- | Helper to trim leading and trailing whitespace.
+trim :: String -> String
+trim = f . f
+  where f = reverse . dropWhile isSpace
+
+-- | Validate that a string field is not empty or whitespace-only.
 validateNonEmpty :: String -> String -> Either String String
-validateNonEmpty = error "TODO: implement validateNonEmpty"
+validateNonEmpty fieldName value =
+  let trimmed = trim value
+  in if null trimmed
+       then Left (fieldName ++ " cannot be empty.")
+       else Right trimmed
 
--- TODO(Member 2): implement validatePhone
+-- | Validate phone number format (7 to 15 digits, allowing +, -, spaces, ()).
 validatePhone :: String -> Either String String
-validatePhone = error "TODO: implement validatePhone"
+validatePhone value = do
+  trimmed <- validateNonEmpty "Phone number" value
+  let isValidChar c = isDigit c || c `elem` ("+ -()" :: String)
+  if not (all isValidChar trimmed)
+    then Left ("'" ++ value ++ "' is not a valid phone number.")
+    else
+      let digits = filter isDigit trimmed
+      in if length digits < 7 || length digits > 15
+           then Left "Phone number must contain between 7 and 15 digits."
+           else Right trimmed
 
--- TODO(Member 2): implement validateEmail
+-- | Validate standard email address format (user@domain.tld).
 validateEmail :: String -> Either String String
-validateEmail = error "TODO: implement validateEmail"
+validateEmail value = do
+  trimmed <- validateNonEmpty "Email address" value
+  let validChar c = isAlphaNum c || c `elem` ("@._+-%" :: String)
+  if not (all validChar trimmed)
+    then Left ("'" ++ value ++ "' is not a valid email address.")
+    else case break (== '@') trimmed of
+      (user, '@' : host)
+        | not (null user)
+            && not (null host)
+            && '.' `elem` host
+            && not ("." `isPrefixOf` host)
+            && not ("." `isSuffixOf` host) ->
+            Right trimmed
+      _ -> Left ("'" ++ value ++ "' is not a valid email address.")
 
 -- | Owner: Member 1. `today` is passed in rather than fetched with
 -- `getCurrentTime` inside this function, so the validator stays pure and

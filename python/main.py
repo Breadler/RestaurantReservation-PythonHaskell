@@ -45,8 +45,74 @@ def run() -> None:
 
 
 def customer_menu(customers: CustomerManager) -> None:
-    # TODO(Member 2): add/view/update/delete customer prompts
-    print("Customer menu not implemented yet.")
+    while True:
+        print("\n--- Customers ---")
+        print("1. Add customer")
+        print("2. View customer")
+        print("3. Update customer")
+        print("4. Delete customer")
+        print("5. List all customers")
+        print("6. Back")
+        choice = input("Choose an option: ").strip()
+
+        try:
+            if choice == "6":
+                return
+            elif choice == "1":
+                _add_customer_prompt(customers)
+            elif choice == "2":
+                _view_customer_prompt(customers)
+            elif choice == "3":
+                _update_customer_prompt(customers)
+            elif choice == "4":
+                _delete_customer_prompt(customers)
+            elif choice == "5":
+                _list_customers_prompt(customers)
+            else:
+                print("Invalid choice.")
+        except ValidationError as exc:
+            print(f"Invalid input: {exc}")
+        except NotImplementedError:
+            print("That part isn't implemented yet (waiting on another module).")
+        except ValueError:
+            print("Please enter a whole number where one is expected.")
+
+
+def _add_customer_prompt(customers: CustomerManager) -> None:
+    name = input("Name: ").strip()
+    phone = input("Phone: ").strip()
+    email = input("Email: ").strip()
+    customer = customers.add(name, phone, email)
+    print(f"Added customer #{customer.id}: {customer.name}.")
+
+
+def _view_customer_prompt(customers: CustomerManager) -> None:
+    customer_id = int(input("Customer ID: ").strip())
+    customer = customers.view(customer_id)
+    print(customer if customer else "Not found.")
+
+
+def _update_customer_prompt(customers: CustomerManager) -> None:
+    customer_id = int(input("Customer ID: ").strip())
+    field = input("Field to update (name/phone/email): ").strip()
+    value = input("New value: ").strip()
+    updated = customers.update(customer_id, **{field: value})
+    print(updated if updated else "Not found.")
+
+
+def _delete_customer_prompt(customers: CustomerManager) -> None:
+    customer_id = int(input("Customer ID: ").strip())
+    deleted = customers.delete(customer_id)
+    print("Deleted." if deleted else "Not found.")
+
+
+def _list_customers_prompt(customers: CustomerManager) -> None:
+    all_customers = customers.list_all()
+    if not all_customers:
+        print("No customers yet.")
+        return
+    for customer in all_customers:
+        print(customer)
 
 
 def reservation_menu(
