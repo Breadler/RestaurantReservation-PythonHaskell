@@ -4,7 +4,13 @@ from customer import CustomerManager
 from reservation import ReservationManager
 from table import TableManager
 from validation import ValidationError
-
+from search import (
+    search_by_customer,
+    filter_by_date,
+    filter_by_status,
+    daily_summary,
+    sort_by_time,
+)
 
 def run() -> None:
     customers = CustomerManager()
@@ -325,8 +331,95 @@ def _update_table_prompt(tables: TableManager) -> None:
 
 
 def search_menu(reservations: ReservationManager) -> None:
-    # TODO(Member 4): search/filter/report prompts
-    print("Search & Reports menu not implemented yet.")
+    while True:
+        print("\n--- Search & Reports ---")
+        print("1. View all reservations")
+        print("2. Search by customer ID")
+        print("3. Filter by date")
+        print("4. Filter by status")
+        print("5. Daily summary")
+        print("6. Sort reservations by date/time")
+        print("7. Back")
+
+        choice = input("Choose an option: ").strip()
+
+        all_reservations = reservations.list_all()
+
+        if choice == "1":
+            _display_reservations(all_reservations)
+
+        elif choice == "2":
+            try:
+                customer_id = int(input("Customer ID: ").strip())
+            except ValueError:
+                print("Customer ID must be a whole number.")
+                continue
+
+            results = search_by_customer(
+                all_reservations,
+                customer_id
+            )
+            _display_reservations(results)
+
+        elif choice == "3":
+            date = input("Date (YYYY-MM-DD): ").strip()
+
+            results = filter_by_date(
+                all_reservations,
+                date
+            )
+            _display_reservations(results)
+
+        elif choice == "4":
+            status = input(
+                "Status (active/cancelled): "
+            ).strip().lower()
+
+            if status not in ("active", "cancelled"):
+                print("Status must be active or cancelled.")
+                continue
+
+            results = filter_by_status(
+                all_reservations,
+                status
+            )
+            _display_reservations(results)
+
+        elif choice == "5":
+            date = input("Date (YYYY-MM-DD): ").strip()
+
+            summary = daily_summary(
+                all_reservations,
+                date
+            )
+
+            print(f"Date: {summary['date']}")
+            print(
+                f"Total reservations: "
+                f"{summary['total_reservations']}"
+            )
+            print(
+                f"Total guests: "
+                f"{summary['total_guests']}"
+            )
+
+        elif choice == "6":
+            results = sort_by_time(all_reservations)
+            _display_reservations(results)
+
+        elif choice == "7":
+            return
+
+        else:
+            print("Invalid choice.")
+
+def _display_reservations(reservation_list) -> None:
+    if not reservation_list:
+        print("No matching reservations found.")
+        return
+
+    for reservation in reservation_list:
+        print(reservation)
 
 
 if __name__ == "__main__":
