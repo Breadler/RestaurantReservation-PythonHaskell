@@ -141,8 +141,121 @@ def _list_reservations_prompt(reservations: ReservationManager) -> None:
 
 
 def table_menu(tables: TableManager, reservations: ReservationManager) -> None:
-    # TODO(Member 3): display available tables, assign table prompts
-    print("Table menu not implemented yet.")
+    """Table management submenu: view/add/update tables, check availability."""
+    while True:
+        print("\n--- Tables ---")
+        print("1. View all tables")
+        print("2. Check table availability")
+        print("3. Add new table")
+        print("4. Update table (capacity/status)")
+        print("5. Back")
+        choice = input("Choose an option: ").strip()
+        print(f"[DEBUG] You selected: '{choice}'", flush=True)
+
+        try:
+            if choice == "5":
+                return
+            elif choice == "1":
+                print("[DEBUG] Executing option 1: View all tables", flush=True)
+                _view_all_tables_prompt(tables)
+            elif choice == "2":
+                print("[DEBUG] Executing option 2: Check availability", flush=True)
+                try:
+                    _check_availability_prompt(tables, reservations)
+                except NotImplementedError:
+                    print("That part isn't implemented yet (waiting on another module).")
+            elif choice == "3":
+                print("[DEBUG] Executing option 3: Add new table", flush=True)
+                _add_table_prompt(tables)
+            elif choice == "4":
+                print("[DEBUG] Executing option 4: Update table", flush=True)
+                _update_table_prompt(tables)
+            else:
+                print("Invalid choice.")
+        except ValidationError as exc:
+            print(f"Invalid input: {exc}")
+        except ValueError:
+            print("Please enter a whole number where one is expected.")
+        except Exception as e:
+            print(f"Error: {e}")
+
+
+def _view_all_tables_prompt(tables: TableManager) -> None:
+    """Display all tables."""
+    print("\n=== All Tables ===", flush=True)
+    print(f"{'ID':<5} {'Capacity':<10} {'Status':<20}", flush=True)
+    print("-" * 35, flush=True)
+    
+    all_tables = tables.list_all()
+    if not all_tables:
+        print("No tables yet.", flush=True)
+    else:
+        for table in all_tables:
+            print(f"{table.id:<5} {table.capacity:<10} {table.status:<20}", flush=True)
+    
+    print("", flush=True)  # Add blank line for readability
+
+
+def _check_availability_prompt(
+    tables: TableManager, reservations: ReservationManager
+) -> None:
+    """Check table availability for a given date and time."""
+    date = input("Date (YYYY-MM-DD): ").strip()
+    time = input("Time (HH:MM): ").strip()
+    
+    available_tables = tables.list_available(date, time, reservations.list_all())
+    if not available_tables:
+        print(f"No tables available on {date} at {time}.")
+        return
+    
+    print(f"\nAvailable tables on {date} at {time}:")
+    print(f"{'ID':<5} {'Capacity':<10}")
+    print("-" * 15)
+    for table in available_tables:
+        print(f"{table.id:<5} {table.capacity:<10}")
+
+
+def _add_table_prompt(tables: TableManager) -> None:
+    """Add a new table with the specified capacity."""
+    capacity = int(input("Table capacity: ").strip())
+    if capacity <= 0:
+        print("Capacity must be a positive number.")
+        return
+    
+    table = tables.add_table(capacity)
+    print(f"Added table #{table.id} with capacity {table.capacity} (Status: {table.status}).")
+
+
+def _update_table_prompt(tables: TableManager) -> None:
+    """Update an existing table's capacity or status."""
+    table_id = int(input("Table ID: ").strip())
+    table = tables.view(table_id) if hasattr(tables, 'view') else None
+    
+    if table is None:
+        print(f"Table {table_id} not found.")
+        return
+    
+    print(f"Current table: ID={table.id}, Capacity={table.capacity}, Status={table.status}")
+    print("Fields to update: capacity, status")
+    field = input("Field to update: ").strip()
+    
+    if field == "capacity":
+        new_capacity = int(input("New capacity: ").strip())
+        if new_capacity <= 0:
+            print("Capacity must be a positive number.")
+            return
+        updated = tables.update(table_id, capacity=new_capacity)
+        print(f"Updated table #{table_id}: {updated}")
+    elif field == "status":
+        print("Status options: Active, Under Maintenance")
+        new_status = input("New status: ").strip()
+        if new_status not in ("Active", "Under Maintenance"):
+            print("Invalid status. Use 'Active' or 'Under Maintenance'.")
+            return
+        updated = tables.update(table_id, status=new_status)
+        print(f"Updated table #{table_id}: {updated}")
+    else:
+        print("Invalid field. Use 'capacity' or 'status'.")
 
 
 def search_menu(reservations: ReservationManager) -> None:

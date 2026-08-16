@@ -1,6 +1,7 @@
 module Types
   ( Customer(..)
   , Table(..)
+  , TableStatus(..)
   , ReservationStatus(..)
   , Reservation(..)
   ) where
@@ -14,9 +15,13 @@ data Customer = Customer
   } deriving (Show, Eq)
 
 -- | A restaurant table. Owner: Member 3.
+data TableStatus = Ready | UnderMaintenance
+  deriving (Show, Eq)
+
 data Table = Table
   { tableId       :: Int
   , tableCapacity :: Int
+  , tableStatus   :: TableStatus
   } deriving (Show, Eq)
 
 -- | Owner: Member 1.
