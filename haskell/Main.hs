@@ -5,15 +5,16 @@ import Data.IORef
 import Data.Time (Day, getCurrentTime, utctDay)
 import Text.Read (readMaybe)
 
-import Customer (viewCustomer)
+import Customer (addCustomer, deleteCustomer, updateCustomer, viewCustomer)
 import Reservation (cancelReservation, createReservation, updateReservation, viewReservation)
-import Types (Customer, Reservation (..), ReservationStatus (..), Table)
-import Validation (validateDate, validatePartySize, validateTime)
+import Types (Customer (..), Reservation (..), ReservationStatus (..), Table)
+import Validation (validateDate, validateEmail, validateNonEmpty, validatePartySize, validatePhone, validateTime)
 
 data AppState = AppState
   { customers         :: [Customer]
   , reservations      :: [Reservation]
   , tables            :: [Table]
+  , nextCustomerId    :: Int
   , nextReservationId :: Int
   }
 
@@ -22,6 +23,7 @@ initialState = AppState
   { customers = []
   , reservations = []
   , tables = []
+  , nextCustomerId = 1
   , nextReservationId = 1
   }
 
@@ -39,12 +41,124 @@ loop stateRef = do
   putStr "Choose an option: "
   choice <- getLine
   case choice of
-    "1" -> putStrLn "Customer menu not implemented yet. (TODO Member 2)" >> loop stateRef
+    "1" -> customerMenu stateRef >> loop stateRef
     "2" -> reservationMenu stateRef >> loop stateRef
     "3" -> putStrLn "Table menu not implemented yet. (TODO Member 3)" >> loop stateRef
     "4" -> putStrLn "Search & Reports menu not implemented yet. (TODO Member 4)" >> loop stateRef
     "5" -> putStrLn "Goodbye!"
     _   -> putStrLn "Invalid choice." >> loop stateRef
+
+-- | Owner: Member 2. Customer submenu -- add/view/update/delete/list,
+-- looping until "Back".
+customerMenu :: IORef AppState -> IO ()
+customerMenu stateRef = do
+  putStrLn "\n--- Customers ---"
+  putStrLn "1. Add customer"
+  putStrLn "2. View customer"
+  putStrLn "3. Update customer"
+  putStrLn "4. Delete customer"
+  putStrLn "5. List all customers"
+  putStrLn "6. Back"
+  putStr "Choose an option: "
+  choice <- getLine
+  case choice of
+    "1" -> runAction (addCustomerPrompt stateRef) >> customerMenu stateRef
+    "2" -> runAction (viewCustomerPrompt stateRef) >> customerMenu stateRef
+    "3" -> runAction (updateCustomerPrompt stateRef) >> customerMenu stateRef
+    "4" -> runAction (deleteCustomerPrompt stateRef) >> customerMenu stateRef
+    "5" -> runAction (listCustomersPrompt stateRef) >> customerMenu stateRef
+    "6" -> return ()
+    _   -> putStrLn "Invalid choice." >> customerMenu stateRef
+
+-- | Pure: validates fields and builds a Customer, or returns the first validation error.
+buildCustomer :: Int -> String -> String -> String -> Either String Customer
+buildCustomer cid nameVal phoneVal emailVal = do
+  name'  <- validateNonEmpty "Customer name" nameVal
+  phone' <- validatePhone phoneVal
+  email' <- validateEmail emailVal
+  Right Customer
+    { customerId    = cid
+    , customerName  = name'
+    , customerPhone = phone'
+    , customerEmail = email'
+    }
+
+addCustomerPrompt :: IORef AppState -> IO ()
+addCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Name: "
+  nameInput <- getLine
+  putStr "Phone: "
+  phoneInput <- getLine
+  putStr "Email: "
+  emailInput <- getLine
+  case buildCustomer (nextCustomerId state) nameInput phoneInput emailInput of
+    Left err -> putStrLn ("Invalid input: " ++ err)
+    Right customer -> do
+      let updated = addCustomer customer (customers state)
+      writeIORef stateRef state
+        { customers = updated
+        , nextCustomerId = nextCustomerId state + 1
+        }
+      putStrLn ("Added customer #" ++ show (customerId customer) ++ ": " ++ customerName customer ++ ".")
+
+viewCustomerPrompt :: IORef AppState -> IO ()
+viewCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Customer ID: "
+  input <- getLine
+  case readMaybe input of
+    Nothing -> putStrLn "Customer ID must be a whole number."
+    Just cid -> case viewCustomer cid (customers state) of
+      Nothing -> putStrLn "Not found."
+      Just c  -> print c
+
+updateCustomerPrompt :: IORef AppState -> IO ()
+updateCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Customer ID: "
+  idInput <- getLine
+  case readMaybe idInput of
+    Nothing -> putStrLn "Customer ID must be a whole number."
+    Just cid ->
+      case viewCustomer cid (customers state) of
+        Nothing -> putStrLn "Not found."
+        Just _  -> do
+          putStr "Field to update (name/phone/email): "
+          field <- getLine
+          putStr "New value: "
+          value <- getLine
+          let result = case field of
+                "name"  -> fmap (\n c -> c { customerName = n }) (validateNonEmpty "Customer name" value)
+                "phone" -> fmap (\p c -> c { customerPhone = p }) (validatePhone value)
+                "email" -> fmap (\e c -> c { customerEmail = e }) (validateEmail value)
+                _       -> Left ("Unknown field: " ++ field)
+          case result of
+            Left err       -> putStrLn ("Invalid input: " ++ err)
+            Right updateFn -> do
+              writeIORef stateRef state { customers = updateCustomer cid updateFn (customers state) }
+              putStrLn "Updated."
+
+deleteCustomerPrompt :: IORef AppState -> IO ()
+deleteCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Customer ID: "
+  input <- getLine
+  case readMaybe input of
+    Nothing -> putStrLn "Customer ID must be a whole number."
+    Just cid ->
+      case viewCustomer cid (customers state) of
+        Nothing -> putStrLn "Not found."
+        Just _  -> do
+          writeIORef stateRef state { customers = deleteCustomer cid (customers state) }
+          putStrLn "Deleted."
+
+listCustomersPrompt :: IORef AppState -> IO ()
+listCustomersPrompt stateRef = do
+  state <- readIORef stateRef
+  if null (customers state)
+    then putStrLn "No customers yet."
+    else mapM_ print (customers state)
 
 -- | Owner: Member 1. Reservation submenu -- create/view/update/cancel/list,
 -- looping until "Back". Customer-existence and table-availability checks
