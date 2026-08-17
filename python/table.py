@@ -1,8 +1,4 @@
-"""Table model + availability/assignment manager. Owner: Member 3.
-
-See docs/modules/table.md for design notes, implementation write-up, and
-test cases this module feeds into.
-"""
+"""Table model and availability manager."""
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -10,12 +6,16 @@ from typing import Dict, List, Optional
 from reservation import Reservation
 
 
+# --- Model -------------------------------------------------------------
+
 @dataclass
 class Table:
     id: int
     capacity: int
     status: str = "Active"  # "Active" or "Under Maintenance"
 
+
+# --- Manager -------------------------------------------------------------
 
 class TableManager:
     def __init__(self) -> None:
@@ -34,14 +34,7 @@ class TableManager:
         return self._tables.get(table_id)
 
     def update(self, table_id: int, **kwargs) -> Optional[Table]:
-        """Update a table's attributes (e.g., capacity or status).
-
-        Supported kwargs:
-        - capacity: int
-        - status: str
-
-        Returns the updated table, or None if not found.
-        """
+        """Update a table's capacity and/or status. Returns None if not found."""
         table = self._tables.get(table_id)
         if table is None:
             return None
@@ -56,12 +49,7 @@ class TableManager:
     def list_available(
         self, date: str, time: str, reservations: List[Reservation]
     ) -> List[Table]:
-        """Return tables with no active reservation at the given date/time.
-
-        Availability is computed from the reservations list instead of a
-        stored booking flag, so table state and reservation state cannot fall
-        out of sync.
-        """
+        """Return tables with no active reservation at the given date/time."""
         return [
             table
             for table in self.list_all()
@@ -72,12 +60,7 @@ class TableManager:
     def is_double_booked(
         self, table_id: int, date: str, time: str, reservations: List[Reservation]
     ) -> bool:
-        """Return True if the table already has an active reservation at
-        the given date/time.
-
-        This is the core invariant enforced before a reservation is created or
-        updated.
-        """
+        """Return True if the table already has an active reservation at the given date/time."""
         return any(
             reservation.status == "active"
             and reservation.table_id == table_id

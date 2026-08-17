@@ -2,21 +2,34 @@ module Main (main) where
 
 import Control.Exception (ErrorCall (..), catch)
 import Data.IORef
+import Data.List (find)
 import Data.Time (Day, getCurrentTime, utctDay)
+import System.IO (BufferMode (NoBuffering), hSetBuffering, stdout)
 import Text.Read (readMaybe)
 
-import Customer (viewCustomer)
+import Search
+    ( searchByCustomer
+    , filterByDate
+    , filterByStatus
+    , dailySummary
+    , sortByTime
+    )
+
+import Customer (addCustomer, deleteCustomer, updateCustomer, viewCustomer)
 import Reservation (cancelReservation, createReservation, updateReservation, viewReservation)
-import Table (listAvailable)
-import Types (Customer, Reservation (..), ReservationStatus (..), Table (..), TableStatus (..))
-import Validation (validateDate, validatePartySize, validateTime)
+import Table (isDoubleBooked, listAvailable)
+import Types (Customer (..), Reservation (..), ReservationStatus (..), Table (..), TableStatus (..))
+import Validation (validateDate, validateEmail, validateNonEmpty, validatePartySize, validatePhone, validateTime)
+
 
 data AppState = AppState
   { customers         :: [Customer]
   , reservations      :: [Reservation]
   , tables            :: [Table]
   , nextReservationId :: Int
+  , nextCustomerId    :: Int
   }
+
 
 initialState :: AppState
 initialState = AppState
@@ -24,10 +37,16 @@ initialState = AppState
   , reservations = []
   , tables = []
   , nextReservationId = 1
+  , nextCustomerId = 1
   }
 
+
 main :: IO ()
-main = newIORef initialState >>= loop
+main = do
+  -- Force stdout to flush immediately so prompts appear before input is read.
+  hSetBuffering stdout NoBuffering
+  newIORef initialState >>= loop
+
 
 loop :: IORef AppState -> IO ()
 loop stateRef = do
@@ -39,18 +58,240 @@ loop stateRef = do
   putStrLn "5. Exit"
   putStr "Choose an option: "
   choice <- getLine
+
   case choice of
-    "1" -> putStrLn "Customer menu not implemented yet. (TODO Member 2)" >> loop stateRef
+    "1" -> customerMenu stateRef >> loop stateRef
     "2" -> reservationMenu stateRef >> loop stateRef
     "3" -> tableMenu stateRef >> loop stateRef
-    "4" -> putStrLn "Search & Reports menu not implemented yet. (TODO Member 4)" >> loop stateRef
+    "4" -> searchMenu stateRef >> loop stateRef
     "5" -> putStrLn "Goodbye!"
     _   -> putStrLn "Invalid choice." >> loop stateRef
 
--- | Owner: Member 1. Reservation submenu -- create/view/update/cancel/list,
--- looping until "Back". Customer-existence and table-availability checks
--- happen here (not in Reservation.hs), same split as reservation_menu()
--- in python/main.py.
+
+-- Customer Menu --------------------------------------------------------
+
+customerMenu :: IORef AppState -> IO ()
+customerMenu stateRef = do
+  putStrLn "\n--- Customers ---"
+  putStrLn "1. Add customer"
+  putStrLn "2. View customer"
+  putStrLn "3. Update customer"
+  putStrLn "4. Delete customer"
+  putStrLn "5. List all customers"
+  putStrLn "6. Back"
+  putStr "Choose an option: "
+  choice <- getLine
+  case choice of
+    "1" -> runAction (addCustomerPrompt stateRef) >> customerMenu stateRef
+    "2" -> runAction (viewCustomerPrompt stateRef) >> customerMenu stateRef
+    "3" -> runAction (updateCustomerPrompt stateRef) >> customerMenu stateRef
+    "4" -> runAction (deleteCustomerPrompt stateRef) >> customerMenu stateRef
+    "5" -> listCustomersPrompt stateRef >> customerMenu stateRef
+    "6" -> return ()
+    _   -> putStrLn "Invalid choice." >> customerMenu stateRef
+
+-- | Pure: validates fields and builds a Customer, or the first validation error.
+buildCustomer :: Int -> String -> String -> String -> Either String Customer
+buildCustomer cid nameStr phoneStr emailStr = do
+  name' <- validateNonEmpty "Name" nameStr
+  phone' <- validatePhone phoneStr
+  email' <- validateEmail emailStr
+  Right Customer
+    { customerId = cid
+    , customerName = name'
+    , customerPhone = phone'
+    , customerEmail = email'
+    }
+
+addCustomerPrompt :: IORef AppState -> IO ()
+addCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Name: "
+  nameInput <- getLine
+  putStr "Phone: "
+  phoneInput <- getLine
+  putStr "Email: "
+  emailInput <- getLine
+  case buildCustomer (nextCustomerId state) nameInput phoneInput emailInput of
+    Left err -> putStrLn ("Invalid input: " ++ err)
+    Right customer -> do
+      writeIORef stateRef state
+        { customers = addCustomer customer (customers state)
+        , nextCustomerId = nextCustomerId state + 1
+        }
+      putStrLn ("Added customer #" ++ show (customerId customer) ++ ": " ++ customerName customer ++ ".")
+
+viewCustomerPrompt :: IORef AppState -> IO ()
+viewCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Customer ID: "
+  input <- getLine
+  case readMaybe input of
+    Nothing -> putStrLn "Customer ID must be a whole number."
+    Just cid -> case viewCustomer cid (customers state) of
+      Nothing -> putStrLn "Not found."
+      Just c  -> print c
+
+updateCustomerPrompt :: IORef AppState -> IO ()
+updateCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Customer ID: "
+  idInput <- getLine
+  case readMaybe idInput of
+    Nothing -> putStrLn "Customer ID must be a whole number."
+    Just cid ->
+      case viewCustomer cid (customers state) of
+        Nothing -> putStrLn "Not found."
+        Just _  -> do
+          putStr "Field to update (name/phone/email): "
+          field <- getLine
+          putStr "New value: "
+          value <- getLine
+          let result = case field of
+                "name"  -> fmap (\n c -> c { customerName = n }) (validateNonEmpty "Name" value)
+                "phone" -> fmap (\p c -> c { customerPhone = p }) (validatePhone value)
+                "email" -> fmap (\e c -> c { customerEmail = e }) (validateEmail value)
+                _       -> Left ("Unknown field: " ++ field)
+          case result of
+            Left err       -> putStrLn ("Invalid input: " ++ err)
+            Right updateFn -> do
+              writeIORef stateRef state { customers = updateCustomer cid updateFn (customers state) }
+              putStrLn "Updated."
+
+deleteCustomerPrompt :: IORef AppState -> IO ()
+deleteCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Customer ID: "
+  input <- getLine
+  case readMaybe input of
+    Nothing -> putStrLn "Customer ID must be a whole number."
+    Just cid ->
+      case viewCustomer cid (customers state) of
+        Nothing -> putStrLn "Not found."
+        Just _  -> do
+          writeIORef stateRef state { customers = deleteCustomer cid (customers state) }
+          putStrLn "Deleted."
+
+listCustomersPrompt :: IORef AppState -> IO ()
+listCustomersPrompt stateRef = do
+  state <- readIORef stateRef
+  if null (customers state)
+    then putStrLn "No customers yet."
+    else mapM_ print (customers state)
+
+
+-- Search & Reports Menu ------------------------------------------------
+
+searchMenu :: IORef AppState -> IO ()
+searchMenu stateRef = do
+  putStrLn "\n--- Search & Reports ---"
+  putStrLn "1. View all reservations"
+  putStrLn "2. Search by customer ID"
+  putStrLn "3. Filter by date"
+  putStrLn "4. Filter by status"
+  putStrLn "5. Daily summary"
+  putStrLn "6. Sort reservations by date/time"
+  putStrLn "7. Back"
+  putStr "Choose an option: "
+
+  choice <- getLine
+  state <- readIORef stateRef
+
+  let allReservations = reservations state
+
+  case choice of
+
+    "1" -> do
+      displayReservations allReservations
+      searchMenu stateRef
+
+    "2" -> do
+      putStr "Customer ID: "
+      customerIdInput <- getLine
+
+      case readMaybe customerIdInput of
+        Nothing ->
+          putStrLn "Customer ID must be a whole number."
+
+        Just customerId ->
+          displayReservations
+            (searchByCustomer customerId allReservations)
+
+      searchMenu stateRef
+
+    "3" -> do
+      putStr "Date (YYYY-MM-DD): "
+      dateInput <- getLine
+
+      displayReservations
+        (filterByDate dateInput allReservations)
+
+      searchMenu stateRef
+
+    "4" -> do
+      putStr "Status (active/cancelled): "
+      statusInput <- getLine
+
+      case statusInput of
+        "active" ->
+          displayReservations
+            (filterByStatus Active allReservations)
+
+        "Active" ->
+          displayReservations
+            (filterByStatus Active allReservations)
+
+        "cancelled" ->
+          displayReservations
+            (filterByStatus Cancelled allReservations)
+
+        "Cancelled" ->
+          displayReservations
+            (filterByStatus Cancelled allReservations)
+
+        _ ->
+          putStrLn "Status must be active or cancelled."
+
+      searchMenu stateRef
+
+    "5" -> do
+      putStr "Date (YYYY-MM-DD): "
+      dateInput <- getLine
+
+      let (totalReservations, totalGuests) =
+            dailySummary dateInput allReservations
+
+      putStrLn ("Date: " ++ dateInput)
+      putStrLn
+        ("Total reservations: " ++ show totalReservations)
+      putStrLn
+        ("Total guests: " ++ show totalGuests)
+
+      searchMenu stateRef
+
+    "6" -> do
+      displayReservations
+        (sortByTime allReservations)
+
+      searchMenu stateRef
+
+    "7" ->
+      return ()
+
+    _ -> do
+      putStrLn "Invalid choice."
+      searchMenu stateRef
+
+
+displayReservations :: [Reservation] -> IO ()
+displayReservations reservationList =
+  if null reservationList
+    then putStrLn "No matching reservations found."
+    else mapM_ print reservationList
+
+
+-- Reservation Menu -------------------------------------------------------
+
 reservationMenu :: IORef AppState -> IO ()
 reservationMenu stateRef = do
   putStrLn "\n--- Reservations ---"
@@ -62,6 +303,7 @@ reservationMenu stateRef = do
   putStrLn "6. Back"
   putStr "Choose an option: "
   choice <- getLine
+
   case choice of
     "1" -> runAction (createReservationPrompt stateRef) >> reservationMenu stateRef
     "2" -> runAction (viewReservationPrompt stateRef) >> reservationMenu stateRef
@@ -71,28 +313,31 @@ reservationMenu stateRef = do
     "6" -> return ()
     _   -> putStrLn "Invalid choice." >> reservationMenu stateRef
 
--- | Other modules' unimplemented functions currently evaluate to
--- `error "TODO(Member N): ..."`. Catching that here keeps one missing
--- piece from crashing the whole program -- the Haskell counterpart of the
--- `except NotImplementedError` catch around action() in python/main.py's
--- run(). Deliberately narrow (only ErrorCall, not every exception) so real
--- bugs still surface loudly, matching how the Python side only catches
--- NotImplementedError/ValidationError and lets other exceptions propagate.
+
+-- | Catches a menu action's runtime errors so one fails without crashing the program.
 runAction :: IO () -> IO ()
 runAction action = action `catch` handler
   where
     handler :: ErrorCall -> IO ()
-    handler (ErrorCall msg) = putStrLn ("That part isn't implemented yet: " ++ msg)
+    handler (ErrorCall msg) =
+      putStrLn ("That part isn't implemented yet: " ++ msg)
 
--- | Pure: validates fields and builds a Reservation, or returns the first
--- validation error. Kept separate from the IO prompt below so the "what
--- makes a reservation valid" logic is testable without a terminal.
+
+-- | Validates fields and builds a Reservation, or returns the first validation error.
 buildReservation
-  :: Day -> Int -> Int -> Int -> String -> String -> Int -> Either String Reservation
+  :: Day
+  -> Int
+  -> Int
+  -> Int
+  -> String
+  -> String
+  -> Int
+  -> Either String Reservation
 buildReservation today rid custId tblId dateStr timeStr size = do
   date' <- validateDate today dateStr
   time' <- validateTime timeStr
   size' <- validatePartySize size
+
   Right Reservation
     { reservationId = rid
     , reservationCustomerId = custId
@@ -103,99 +348,223 @@ buildReservation today rid custId tblId dateStr timeStr size = do
     , reservationStatus = Active
     }
 
+
 createReservationPrompt :: IORef AppState -> IO ()
 createReservationPrompt stateRef = do
   state <- readIORef stateRef
+
   putStr "Customer ID: "
   custIdInput <- getLine
+
   putStr "Table ID: "
   tableIdInput <- getLine
+
   putStr "Date (YYYY-MM-DD): "
   dateInput <- getLine
+
   putStr "Time (HH:MM): "
   timeInput <- getLine
+
   putStr "Party size: "
   sizeInput <- getLine
+
   case (readMaybe custIdInput, readMaybe tableIdInput, readMaybe sizeInput) of
+
     (Just custId, Just tblId, Just size) ->
       case viewCustomer custId (customers state) of
-        Nothing -> putStrLn ("No customer with ID " ++ show custId ++ ".")
-        Just _  -> do
-          today <- utctDay <$> getCurrentTime
-          case buildReservation today (nextReservationId state) custId tblId dateInput timeInput size of
-            Left err -> putStrLn ("Invalid input: " ++ err)
-            Right reservation -> do
-              let updated = createReservation reservation (reservations state)
-              writeIORef stateRef state
-                { reservations = updated
-                , nextReservationId = nextReservationId state + 1
-                }
-              putStrLn ("Created reservation #" ++ show (reservationId reservation) ++ ".")
-    _ -> putStrLn "Customer ID, Table ID, and party size must be whole numbers."
+
+        Nothing ->
+          putStrLn
+            ("No customer with ID " ++ show custId ++ ".")
+
+        Just _ ->
+          case find ((== tblId) . tableId) (tables state) of
+
+            Nothing ->
+              putStrLn ("No table with ID " ++ show tblId ++ ".")
+
+            Just tbl | tableStatus tbl /= Ready ->
+              putStrLn ("Table " ++ show tblId ++ " is under maintenance.")
+
+            Just _ | isDoubleBooked tblId dateInput timeInput (reservations state) ->
+              putStrLn
+                ( "Table " ++ show tblId ++ " is already booked at "
+                ++ dateInput ++ " " ++ timeInput ++ "."
+                )
+
+            Just _ -> do
+              today <- utctDay <$> getCurrentTime
+
+              case buildReservation
+                today
+                (nextReservationId state)
+                custId
+                tblId
+                dateInput
+                timeInput
+                size of
+
+                Left err ->
+                  putStrLn ("Invalid input: " ++ err)
+
+                Right reservation -> do
+                  let updated =
+                        createReservation
+                          reservation
+                          (reservations state)
+
+                  writeIORef stateRef state
+                    { reservations = updated
+                    , nextReservationId =
+                        nextReservationId state + 1
+                    }
+
+                  putStrLn
+                    ( "Created reservation #"
+                    ++ show (reservationId reservation)
+                    ++ "."
+                    )
+
+    _ ->
+      putStrLn
+        "Customer ID, Table ID, and party size must be whole numbers."
+
 
 viewReservationPrompt :: IORef AppState -> IO ()
 viewReservationPrompt stateRef = do
   state <- readIORef stateRef
+
   putStr "Reservation ID: "
   input <- getLine
+
   case readMaybe input of
-    Nothing -> putStrLn "Reservation ID must be a whole number."
-    Just rid -> case viewReservation rid (reservations state) of
-      Nothing -> putStrLn "Not found."
-      Just r  -> print r
+
+    Nothing ->
+      putStrLn "Reservation ID must be a whole number."
+
+    Just rid ->
+      case viewReservation rid (reservations state) of
+
+        Nothing ->
+          putStrLn "Not found."
+
+        Just r ->
+          print r
+
 
 updateReservationPrompt :: IORef AppState -> IO ()
 updateReservationPrompt stateRef = do
   state <- readIORef stateRef
+
   putStr "Reservation ID: "
   idInput <- getLine
+
   case readMaybe idInput of
-    Nothing -> putStrLn "Reservation ID must be a whole number."
+
+    Nothing ->
+      putStrLn "Reservation ID must be a whole number."
+
     Just rid ->
       case viewReservation rid (reservations state) of
-        Nothing -> putStrLn "Not found."
-        Just _  -> do
+
+        Nothing ->
+          putStrLn "Not found."
+
+        Just _ -> do
           putStr "Field to update (date/time/partysize): "
           field <- getLine
+
           putStr "New value: "
           value <- getLine
+
           today <- utctDay <$> getCurrentTime
-          let result = case field of
-                "date"      -> fmap (\d r -> r { reservationDate = d }) (validateDate today value)
-                "time"      -> fmap (\t r -> r { reservationTime = t }) (validateTime value)
-                "partysize" -> case readMaybe value of
-                  Nothing -> Left "Party size must be a whole number."
-                  Just sz -> fmap (\p r -> r { partySize = p }) (validatePartySize sz)
-                _           -> Left ("Unknown field: " ++ field)
+
+          let result =
+                case field of
+
+                  "date" ->
+                    fmap
+                      (\d r -> r { reservationDate = d })
+                      (validateDate today value)
+
+                  "time" ->
+                    fmap
+                      (\t r -> r { reservationTime = t })
+                      (validateTime value)
+
+                  "partysize" ->
+                    case readMaybe value of
+
+                      Nothing ->
+                        Left "Party size must be a whole number."
+
+                      Just sz ->
+                        fmap
+                          (\p r -> r { partySize = p })
+                          (validatePartySize sz)
+
+                  _ ->
+                    Left ("Unknown field: " ++ field)
+
           case result of
-            Left err       -> putStrLn ("Invalid input: " ++ err)
+
+            Left err ->
+              putStrLn ("Invalid input: " ++ err)
+
             Right updateFn -> do
-              writeIORef stateRef state { reservations = updateReservation rid updateFn (reservations state) }
+              writeIORef stateRef state
+                { reservations =
+                    updateReservation
+                      rid
+                      updateFn
+                      (reservations state)
+                }
+
               putStrLn "Updated."
+
 
 cancelReservationPrompt :: IORef AppState -> IO ()
 cancelReservationPrompt stateRef = do
   state <- readIORef stateRef
+
   putStr "Reservation ID: "
   input <- getLine
+
   case readMaybe input of
-    Nothing -> putStrLn "Reservation ID must be a whole number."
+
+    Nothing ->
+      putStrLn "Reservation ID must be a whole number."
+
     Just rid ->
       case viewReservation rid (reservations state) of
-        Nothing -> putStrLn "Not found."
-        Just _  -> do
-          writeIORef stateRef state { reservations = cancelReservation rid (reservations state) }
+
+        Nothing ->
+          putStrLn "Not found."
+
+        Just _ -> do
+          writeIORef stateRef state
+            { reservations =
+                cancelReservation
+                  rid
+                  (reservations state)
+            }
+
           putStrLn "Cancelled."
+
 
 listReservationsPrompt :: IORef AppState -> IO ()
 listReservationsPrompt stateRef = do
   state <- readIORef stateRef
-  if null (reservations state)
-    then putStrLn "No reservations yet."
-    else mapM_ print (reservations state)
 
--- | Owner: Member 3. Table submenu -- view/add/update tables, check
--- availability. Looping until "Back".
+  if null (reservations state)
+    then
+      putStrLn "No reservations yet."
+    else
+      mapM_ print (reservations state)
+
+
+-- Table Menu --------------------------------------------------------------
+
 tableMenu :: IORef AppState -> IO ()
 tableMenu stateRef = do
   putStrLn "\n--- Tables ---"
@@ -205,126 +574,327 @@ tableMenu stateRef = do
   putStrLn "4. Update table (capacity/status)"
   putStrLn "5. Back"
   putStr "Choose an option: "
+
   choice <- getLine
+
   case choice of
-    "1" -> viewAllTablesPrompt stateRef >> tableMenu stateRef
-    "2" -> runAction (checkAvailabilityPrompt stateRef) >> tableMenu stateRef
-    "3" -> addTablePrompt stateRef >> tableMenu stateRef
-    "4" -> updateTablePrompt stateRef >> tableMenu stateRef
-    "5" -> return ()
-    _   -> putStrLn "Invalid choice." >> tableMenu stateRef
+    "1" ->
+      viewAllTablesPrompt stateRef
+        >> tableMenu stateRef
+
+    "2" ->
+      runAction (checkAvailabilityPrompt stateRef)
+        >> tableMenu stateRef
+
+    "3" ->
+      addTablePrompt stateRef
+        >> tableMenu stateRef
+
+    "4" ->
+      updateTablePrompt stateRef
+        >> tableMenu stateRef
+
+    "5" ->
+      return ()
+
+    _ ->
+      putStrLn "Invalid choice."
+        >> tableMenu stateRef
+
 
 -- | Display all tables.
 viewAllTablesPrompt :: IORef AppState -> IO ()
 viewAllTablesPrompt stateRef = do
   state <- readIORef stateRef
+
   putStrLn "\n=== All Tables ==="
   putStrLn "ID    Capacity    Status"
   putStrLn "---------------------------------"
+
   if null (tables state)
-    then putStrLn "No tables yet."
-    else mapM_ printTable (tables state)
+    then
+      putStrLn "No tables yet."
+    else
+      mapM_ printTable (tables state)
+
   putStrLn ""
+
   where
     printTable tbl =
-      let statusStr = case tableStatus tbl of
-                        Ready           -> "Active"
-                        UnderMaintenance -> "Under Maintenance"
-      in putStrLn (padRight 6 (show (tableId tbl)) ++ padRight 14 (show (tableCapacity tbl)) ++ statusStr)
-    padRight n str = str ++ replicate (n - length str) ' '
+      let statusStr =
+            case tableStatus tbl of
+              Ready ->
+                "Active"
+
+              UnderMaintenance ->
+                "Under Maintenance"
+
+      in
+        putStrLn
+          ( padRight 6 (show (tableId tbl))
+          ++ padRight 14 (show (tableCapacity tbl))
+          ++ statusStr
+          )
+
+    padRight n str =
+      str ++ replicate (n - length str) ' '
+
 
 -- | Check table availability for a given date and time.
 checkAvailabilityPrompt :: IORef AppState -> IO ()
 checkAvailabilityPrompt stateRef = do
   state <- readIORef stateRef
+
   putStr "Date (YYYY-MM-DD): "
   dateInput <- getLine
+
   putStr "Time (HH:MM): "
   timeInput <- getLine
 
-  let availableTables = listAvailable dateInput timeInput (tables state) (reservations state)
+  let availableTables =
+        listAvailable
+          dateInput
+          timeInput
+          (tables state)
+          (reservations state)
 
-  putStrLn ("\nAvailable tables for " ++ dateInput ++ " at " ++ timeInput ++ ":")
+  putStrLn
+    ( "\nAvailable tables for "
+    ++ dateInput
+    ++ " at "
+    ++ timeInput
+    ++ ":"
+    )
+
   if null availableTables
-    then putStrLn "No tables available."
+    then
+      putStrLn "No tables available."
     else do
       putStrLn "ID    Capacity    Status"
       putStrLn "---------------------------------"
       mapM_ printTable availableTables
+
   where
     printTable tbl =
-      let statusStr = case tableStatus tbl of
-                        Ready           -> "Active"
-                        UnderMaintenance -> "Under Maintenance"
-      in putStrLn (padRight 6 (show (tableId tbl)) ++ padRight 14 (show (tableCapacity tbl)) ++ statusStr)
-    padRight n str = str ++ replicate (n - length str) ' '
+      let statusStr =
+            case tableStatus tbl of
+              Ready ->
+                "Active"
+
+              UnderMaintenance ->
+                "Under Maintenance"
+
+      in
+        putStrLn
+          ( padRight 6 (show (tableId tbl))
+          ++ padRight 14 (show (tableCapacity tbl))
+          ++ statusStr
+          )
+
+    padRight n str =
+      str ++ replicate (n - length str) ' '
+
 
 -- | Add a new table with the specified capacity.
 addTablePrompt :: IORef AppState -> IO ()
 addTablePrompt stateRef = do
   putStr "Table capacity (whole number only): "
   capacityInput <- getLine
+
   case readMaybe capacityInput of
-    Nothing -> putStrLn "Capacity must be a whole number."
+
+    Nothing ->
+      putStrLn "Capacity must be a whole number."
+
     Just capacity ->
       if capacity <= 0
-        then putStrLn "Capacity must be a positive number."
+        then
+          putStrLn "Capacity must be a positive number."
+
         else do
           state <- readIORef stateRef
-          let newTableId = length (tables state) + 1
-          let newTable = Table { tableId = newTableId, tableCapacity = capacity, tableStatus = Ready }
-          writeIORef stateRef state { tables = tables state ++ [newTable] }
-          putStrLn ("Added table #" ++ show newTableId ++ " with capacity " ++ show capacity ++ " (Status: Active).")
+
+          let newTableId =
+                length (tables state) + 1
+
+          let newTable =
+                Table
+                  { tableId = newTableId
+                  , tableCapacity = capacity
+                  , tableStatus = Ready
+                  }
+
+          writeIORef stateRef state
+            { tables =
+                tables state ++ [newTable]
+            }
+
+          putStrLn
+            ( "Added table #"
+            ++ show newTableId
+            ++ " with capacity "
+            ++ show capacity
+            ++ " (Status: Active)."
+            )
+
 
 -- | Update an existing table's capacity or status.
 updateTablePrompt :: IORef AppState -> IO ()
 updateTablePrompt stateRef = do
   putStr "Table ID (whole number only): "
   idInput <- getLine
+
   case readMaybe idInput of
-    Nothing -> putStrLn "Table ID must be a whole number."
+
+    Nothing ->
+      putStrLn "Table ID must be a whole number."
+
     Just tid -> do
       state <- readIORef stateRef
+
       case findTable tid (tables state) of
-        Nothing -> putStrLn ("Table " ++ show tid ++ " not found.")
+
+        Nothing ->
+          putStrLn
+            ("Table " ++ show tid ++ " not found.")
+
         Just tbl -> do
-          let statusStr = case tableStatus tbl of
-                            Ready           -> "Active"
-                            UnderMaintenance -> "Under Maintenance"
-          putStrLn ("Current table: ID=" ++ show (tableId tbl) ++ ", Capacity=" ++ show (tableCapacity tbl) ++ ", Status=" ++ statusStr)
+
+          let statusStr =
+                case tableStatus tbl of
+                  Ready ->
+                    "Active"
+
+                  UnderMaintenance ->
+                    "Under Maintenance"
+
+          putStrLn
+            ( "Current table: ID="
+            ++ show (tableId tbl)
+            ++ ", Capacity="
+            ++ show (tableCapacity tbl)
+            ++ ", Status="
+            ++ statusStr
+            )
+
           putStrLn "Fields to update: capacity, status"
           putStr "Field to update: "
+
           field <- getLine
+
           case field of
+
             "capacity" -> do
               putStr "New capacity (whole number only): "
               capacityInput <- getLine
+
               case readMaybe capacityInput of
-                Nothing -> putStrLn "Capacity must be a whole number."
+
+                Nothing ->
+                  putStrLn
+                    "Capacity must be a whole number."
+
                 Just newCapacity ->
                   if newCapacity <= 0
-                    then putStrLn "Capacity must be a positive number."
+                    then
+                      putStrLn
+                        "Capacity must be a positive number."
+
                     else do
-                      let updatedTables = map (\t -> if tableId t == tid then t { tableCapacity = newCapacity } else t) (tables state)
-                      writeIORef stateRef state { tables = updatedTables }
-                      putStrLn ("Updated table #" ++ show tid ++ ".")
+                      let updatedTables =
+                            map
+                              (\t ->
+                                if tableId t == tid
+                                  then
+                                    t
+                                      { tableCapacity =
+                                          newCapacity
+                                      }
+                                  else
+                                    t
+                              )
+                              (tables state)
+
+                      writeIORef stateRef state
+                        { tables = updatedTables }
+
+                      putStrLn
+                        ( "Updated table #"
+                        ++ show tid
+                        ++ "."
+                        )
+
             "status" -> do
-              putStrLn "Status options: Ready, UnderMaintenance"
+              putStrLn
+                "Status options: Ready, UnderMaintenance"
+
               putStr "New status: "
               statusInput <- getLine
+
               case statusInput of
+
                 "Ready" -> do
-                  let updatedTables = map (\t -> if tableId t == tid then t { tableStatus = Ready } else t) (tables state)
-                  writeIORef stateRef state { tables = updatedTables }
-                  putStrLn ("Updated table #" ++ show tid ++ ".")
+                  let updatedTables =
+                        map
+                          (\t ->
+                            if tableId t == tid
+                              then
+                                t { tableStatus = Ready }
+                              else
+                                t
+                          )
+                          (tables state)
+
+                  writeIORef stateRef state
+                    { tables = updatedTables }
+
+                  putStrLn
+                    ( "Updated table #"
+                    ++ show tid
+                    ++ "."
+                    )
+
                 "UnderMaintenance" -> do
-                  let updatedTables = map (\t -> if tableId t == tid then t { tableStatus = UnderMaintenance } else t) (tables state)
-                  writeIORef stateRef state { tables = updatedTables }
-                  putStrLn ("Updated table #" ++ show tid ++ ".")
-                _ -> putStrLn "Invalid status. Use 'Ready' or 'UnderMaintenance'."
-            _ -> putStrLn "Invalid field. Use 'capacity' or 'status'."
+                  let updatedTables =
+                        map
+                          (\t ->
+                            if tableId t == tid
+                              then
+                                t
+                                  { tableStatus =
+                                      UnderMaintenance
+                                  }
+                              else
+                                t
+                          )
+                          (tables state)
+
+                  writeIORef stateRef state
+                    { tables = updatedTables }
+
+                  putStrLn
+                    ( "Updated table #"
+                    ++ show tid
+                    ++ "."
+                    )
+
+                _ ->
+                  putStrLn
+                    "Invalid status. Use 'Ready' or 'UnderMaintenance'."
+
+            _ ->
+              putStrLn
+                "Invalid field. Use 'capacity' or 'status'."
+
   where
     findTable :: Int -> [Table] -> Maybe Table
-    findTable tid tblList = case filter (\t -> tableId t == tid) tblList of
-      [t] -> Just t
-      _   -> Nothing
+    findTable tid tblList =
+      case filter
+        (\t -> tableId t == tid)
+        tblList of
+
+        [t] ->
+          Just t
+
+        _ ->
+          Nothing

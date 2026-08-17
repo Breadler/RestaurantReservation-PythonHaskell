@@ -6,24 +6,51 @@ module Search
   , sortByTime
   ) where
 
-import Types (Reservation, ReservationStatus)
+import Types (Reservation(..), ReservationStatus(..))
+import Data.List (sortOn)
 
--- | Owner: Member 4. See docs/modules/search-reporting.md for design
--- notes, implementation write-up, and test cases this module feeds into.
+-- Search ---------------------------------------------------------------
 
 searchByCustomer :: Int -> [Reservation] -> [Reservation]
-searchByCustomer = error "TODO(Member 4): implement searchByCustomer"
+searchByCustomer customerId reservations =
+    filter
+        (\reservation ->
+            reservationCustomerId reservation == customerId
+        )
+        reservations
 
 filterByDate :: String -> [Reservation] -> [Reservation]
-filterByDate = error "TODO(Member 4): implement filterByDate"
+filterByDate date reservations =
+    filter
+        (\reservation ->
+            reservationDate reservation == date
+        )
+        reservations
 
 filterByStatus :: ReservationStatus -> [Reservation] -> [Reservation]
-filterByStatus = error "TODO(Member 4): implement filterByStatus"
+filterByStatus status reservations =
+    filter
+        (\reservation ->
+            reservationStatus reservation == status
+        )
+        reservations
 
--- | Optional: total reservations and total guests for a given date.
+-- Reporting ------------------------------------------------------------
+
+-- | Total reservations and total guests for a given date.
 dailySummary :: String -> [Reservation] -> (Int, Int)
-dailySummary = error "TODO(Member 4): implement dailySummary (optional)"
+dailySummary date reservations =
+    let dailyReservations = filterByDate date reservations
+        totalReservations = length dailyReservations
+        totalGuests = sum (map partySize dailyReservations)
+    in
+        (totalReservations, totalGuests)
 
--- | Optional: sort reservations by date then time.
+-- | Sort reservations by date then time.
 sortByTime :: [Reservation] -> [Reservation]
-sortByTime = error "TODO(Member 4): implement sortByTime (optional)"
+sortByTime reservations =
+    sortOn
+        (\reservation ->
+            (reservationDate reservation, reservationTime reservation)
+        )
+        reservations

@@ -1,8 +1,4 @@
-"""Shared input validation helpers. Owner: whole group.
-
-Each manager should call these before creating/updating a record and
-surface a clear error message to the CLI layer on failure.
-"""
+"""Shared input validation helpers, used by all three managers."""
 
 from datetime import date, datetime
 
@@ -13,6 +9,8 @@ import re
 class ValidationError(ValueError):
     """Raised when user input fails validation."""
 
+
+# --- Customer fields -------------------------------------------------------
 
 def validate_non_empty_string(value: str, field_name: str) -> str:
     """Raise ValidationError if `value` is empty/whitespace; else return it stripped."""
@@ -43,6 +41,8 @@ def validate_email(value: str) -> str:
         raise ValidationError(f"'{value}' is not a valid email address.")
     return stripped
 
+
+# --- Reservation fields ------------------------------------------------------
 
 def validate_date(value: str) -> str:
     """Raise ValidationError if `value` isn't a valid YYYY-MM-DD date, or is in the past."""

@@ -9,9 +9,6 @@ import Data.List (find)
 
 import Types (Customer (..))
 
--- | Owner: Member 2. See docs/modules/customer.md for design notes,
--- implementation write-up, and test cases this module feeds into.
-
 -- | Add a new customer, returning the updated list.
 addCustomer :: Customer -> [Customer] -> [Customer]
 addCustomer customer customers = customers ++ [customer]

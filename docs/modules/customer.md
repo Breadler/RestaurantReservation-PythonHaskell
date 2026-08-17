@@ -1,7 +1,9 @@
 # Module: Customer Management
 
 **Owner:** Member 2
-**Status:** Done. Implemented and tested in both languages — Python verified via unit assertions and CLI integration; Haskell verified with pure type-checked functions and `Main.hs` IO state handling.
+**Status:** Done. Implemented and tested in both languages: Python verified via unit assertions and CLI integration; Haskell verified with pure type-checked functions and `Main.hs` IO state handling.
+
+**Integration note (found during review, now fixed):** `Customer.hs`/`Validation.hs` were correctly implemented and passing tests as pure functions, but `Main.hs`'s option "1" was still the original placeholder (`"Customer menu not implemented yet."`). The customer menu, and the `AppState.nextCustomerId` field this doc describes, hadn't actually been wired into the CLI yet, so there was no way to add a customer from the running Haskell app (which also meant the reservation-creation happy path was untestable end-to-end). Wired up during a full-team integration review, following the exact shape already described below (same field name, same function calls); re-verified working via the built executable.
 
 Covers Report.md sections 4.2/4.3 (Implementation), 5.2 (Test Cases), and the Customer-specific parts of 6.1 (Comparison). See [docs/design/project-structure.md](../design/project-structure.md) for the shared architecture and diagrams.
 

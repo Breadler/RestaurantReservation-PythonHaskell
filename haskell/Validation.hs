@@ -11,13 +11,12 @@ import Data.Char (isAlphaNum, isDigit, isSpace)
 import Data.List (isPrefixOf, isSuffixOf)
 import Data.Time (Day, TimeOfDay, defaultTimeLocale, parseTimeM)
 
--- | Owner: whole group. Each validator returns Left with an error message
--- on invalid input, or Right with the validated value.
-
 -- | Helper to trim leading and trailing whitespace.
 trim :: String -> String
 trim = f . f
   where f = reverse . dropWhile isSpace
+
+-- Customer fields -----------------------------------------------------------
 
 -- | Validate that a string field is not empty or whitespace-only.
 validateNonEmpty :: String -> String -> Either String String
@@ -57,9 +56,9 @@ validateEmail value = do
             Right trimmed
       _ -> Left ("'" ++ value ++ "' is not a valid email address.")
 
--- | Owner: Member 1. `today` is passed in rather than fetched with
--- `getCurrentTime` inside this function, so the validator stays pure and
--- easy to test -- the IO boundary (reading the clock) lives in Main.hs.
+-- Reservation fields --------------------------------------------------------
+
+-- | `today` is passed in rather than read from the clock, so this stays pure.
 validateDate :: Day -> String -> Either String String
 validateDate today value =
   case parseTimeM True defaultTimeLocale "%Y-%m-%d" value :: Maybe Day of
@@ -68,14 +67,12 @@ validateDate today value =
       | d < today -> Left ("Reservation date " ++ value ++ " is in the past.")
       | otherwise -> Right value
 
--- | Owner: Member 1.
 validateTime :: String -> Either String String
 validateTime value =
   case parseTimeM True defaultTimeLocale "%H:%M" value :: Maybe TimeOfDay of
     Nothing -> Left (value ++ " is not a valid time (expected HH:MM, 24-hour).")
     Just _  -> Right value
 
--- | Owner: Member 1.
 validatePartySize :: Int -> Either String Int
 validatePartySize value
   | value <= 0 = Left "Party size must be at least 1."
