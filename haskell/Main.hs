@@ -2,7 +2,9 @@ module Main (main) where
 
 import Control.Exception (ErrorCall (..), catch)
 import Data.IORef
+import Data.List (find)
 import Data.Time (Day, getCurrentTime, utctDay)
+import System.IO (BufferMode (NoBuffering), hSetBuffering, stdout)
 import Text.Read (readMaybe)
 
 import Search
@@ -13,11 +15,11 @@ import Search
     , sortByTime
     )
 
-import Customer (viewCustomer)
+import Customer (addCustomer, deleteCustomer, updateCustomer, viewCustomer)
 import Reservation (cancelReservation, createReservation, updateReservation, viewReservation)
-import Table (listAvailable)
-import Types (Customer, Reservation (..), ReservationStatus (..), Table (..), TableStatus (..))
-import Validation (validateDate, validatePartySize, validateTime)
+import Table (isDoubleBooked, listAvailable)
+import Types (Customer (..), Reservation (..), ReservationStatus (..), Table (..), TableStatus (..))
+import Validation (validateDate, validateEmail, validateNonEmpty, validatePartySize, validatePhone, validateTime)
 
 
 data AppState = AppState
@@ -25,6 +27,7 @@ data AppState = AppState
   , reservations      :: [Reservation]
   , tables            :: [Table]
   , nextReservationId :: Int
+  , nextCustomerId    :: Int
   }
 
 
@@ -34,11 +37,15 @@ initialState = AppState
   , reservations = []
   , tables = []
   , nextReservationId = 1
+  , nextCustomerId = 1
   }
 
 
 main :: IO ()
-main = newIORef initialState >>= loop
+main = do
+  -- Force stdout to flush immediately so prompts appear before input is read.
+  hSetBuffering stdout NoBuffering
+  newIORef initialState >>= loop
 
 
 loop :: IORef AppState -> IO ()
@@ -53,7 +60,7 @@ loop stateRef = do
   choice <- getLine
 
   case choice of
-    "1" -> putStrLn "Customer menu not implemented yet. (TODO Member 2)" >> loop stateRef
+    "1" -> customerMenu stateRef >> loop stateRef
     "2" -> reservationMenu stateRef >> loop stateRef
     "3" -> tableMenu stateRef >> loop stateRef
     "4" -> searchMenu stateRef >> loop stateRef
@@ -61,9 +68,119 @@ loop stateRef = do
     _   -> putStrLn "Invalid choice." >> loop stateRef
 
 
--- =========================================================
--- MEMBER 4: SEARCH & REPORTING
--- =========================================================
+-- Customer Menu --------------------------------------------------------
+
+customerMenu :: IORef AppState -> IO ()
+customerMenu stateRef = do
+  putStrLn "\n--- Customers ---"
+  putStrLn "1. Add customer"
+  putStrLn "2. View customer"
+  putStrLn "3. Update customer"
+  putStrLn "4. Delete customer"
+  putStrLn "5. List all customers"
+  putStrLn "6. Back"
+  putStr "Choose an option: "
+  choice <- getLine
+  case choice of
+    "1" -> runAction (addCustomerPrompt stateRef) >> customerMenu stateRef
+    "2" -> runAction (viewCustomerPrompt stateRef) >> customerMenu stateRef
+    "3" -> runAction (updateCustomerPrompt stateRef) >> customerMenu stateRef
+    "4" -> runAction (deleteCustomerPrompt stateRef) >> customerMenu stateRef
+    "5" -> listCustomersPrompt stateRef >> customerMenu stateRef
+    "6" -> return ()
+    _   -> putStrLn "Invalid choice." >> customerMenu stateRef
+
+-- | Pure: validates fields and builds a Customer, or the first validation error.
+buildCustomer :: Int -> String -> String -> String -> Either String Customer
+buildCustomer cid nameStr phoneStr emailStr = do
+  name' <- validateNonEmpty "Name" nameStr
+  phone' <- validatePhone phoneStr
+  email' <- validateEmail emailStr
+  Right Customer
+    { customerId = cid
+    , customerName = name'
+    , customerPhone = phone'
+    , customerEmail = email'
+    }
+
+addCustomerPrompt :: IORef AppState -> IO ()
+addCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Name: "
+  nameInput <- getLine
+  putStr "Phone: "
+  phoneInput <- getLine
+  putStr "Email: "
+  emailInput <- getLine
+  case buildCustomer (nextCustomerId state) nameInput phoneInput emailInput of
+    Left err -> putStrLn ("Invalid input: " ++ err)
+    Right customer -> do
+      writeIORef stateRef state
+        { customers = addCustomer customer (customers state)
+        , nextCustomerId = nextCustomerId state + 1
+        }
+      putStrLn ("Added customer #" ++ show (customerId customer) ++ ": " ++ customerName customer ++ ".")
+
+viewCustomerPrompt :: IORef AppState -> IO ()
+viewCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Customer ID: "
+  input <- getLine
+  case readMaybe input of
+    Nothing -> putStrLn "Customer ID must be a whole number."
+    Just cid -> case viewCustomer cid (customers state) of
+      Nothing -> putStrLn "Not found."
+      Just c  -> print c
+
+updateCustomerPrompt :: IORef AppState -> IO ()
+updateCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Customer ID: "
+  idInput <- getLine
+  case readMaybe idInput of
+    Nothing -> putStrLn "Customer ID must be a whole number."
+    Just cid ->
+      case viewCustomer cid (customers state) of
+        Nothing -> putStrLn "Not found."
+        Just _  -> do
+          putStr "Field to update (name/phone/email): "
+          field <- getLine
+          putStr "New value: "
+          value <- getLine
+          let result = case field of
+                "name"  -> fmap (\n c -> c { customerName = n }) (validateNonEmpty "Name" value)
+                "phone" -> fmap (\p c -> c { customerPhone = p }) (validatePhone value)
+                "email" -> fmap (\e c -> c { customerEmail = e }) (validateEmail value)
+                _       -> Left ("Unknown field: " ++ field)
+          case result of
+            Left err       -> putStrLn ("Invalid input: " ++ err)
+            Right updateFn -> do
+              writeIORef stateRef state { customers = updateCustomer cid updateFn (customers state) }
+              putStrLn "Updated."
+
+deleteCustomerPrompt :: IORef AppState -> IO ()
+deleteCustomerPrompt stateRef = do
+  state <- readIORef stateRef
+  putStr "Customer ID: "
+  input <- getLine
+  case readMaybe input of
+    Nothing -> putStrLn "Customer ID must be a whole number."
+    Just cid ->
+      case viewCustomer cid (customers state) of
+        Nothing -> putStrLn "Not found."
+        Just _  -> do
+          writeIORef stateRef state { customers = deleteCustomer cid (customers state) }
+          putStrLn "Deleted."
+
+listCustomersPrompt :: IORef AppState -> IO ()
+listCustomersPrompt stateRef = do
+  state <- readIORef stateRef
+  if null (customers state)
+    then putStrLn "No customers yet."
+    else mapM_ print (customers state)
+
+
+-- Search & Reports Menu ------------------------------------------------
 
 searchMenu :: IORef AppState -> IO ()
 searchMenu stateRef = do
@@ -173,14 +290,8 @@ displayReservations reservationList =
     else mapM_ print reservationList
 
 
--- =========================================================
--- MEMBER 1: RESERVATION MANAGEMENT
--- =========================================================
+-- Reservation Menu -------------------------------------------------------
 
--- | Owner: Member 1. Reservation submenu -- create/view/update/cancel/list,
--- looping until "Back". Customer-existence and table-availability checks
--- happen here (not in Reservation.hs), same split as reservation_menu()
--- in python/main.py.
 reservationMenu :: IORef AppState -> IO ()
 reservationMenu stateRef = do
   putStrLn "\n--- Reservations ---"
@@ -203,13 +314,7 @@ reservationMenu stateRef = do
     _   -> putStrLn "Invalid choice." >> reservationMenu stateRef
 
 
--- | Other modules' unimplemented functions currently evaluate to
--- `error "TODO(Member N): ..."`. Catching that here keeps one missing
--- piece from crashing the whole program -- the Haskell counterpart of the
--- `except NotImplementedError` catch around action() in python/main.py's
--- run(). Deliberately narrow (only ErrorCall, not every exception) so real
--- bugs still surface loudly, matching how the Python side only catches
--- NotImplementedError/ValidationError and lets other exceptions propagate.
+-- | Catches a menu action's runtime errors so one fails without crashing the program.
 runAction :: IO () -> IO ()
 runAction action = action `catch` handler
   where
@@ -218,9 +323,7 @@ runAction action = action `catch` handler
       putStrLn ("That part isn't implemented yet: " ++ msg)
 
 
--- | Pure: validates fields and builds a Reservation, or returns the first
--- validation error. Kept separate from the IO prompt below so the "what
--- makes a reservation valid" logic is testable without a terminal.
+-- | Validates fields and builds a Reservation, or returns the first validation error.
 buildReservation
   :: Day
   -> Int
@@ -274,38 +377,53 @@ createReservationPrompt stateRef = do
           putStrLn
             ("No customer with ID " ++ show custId ++ ".")
 
-        Just _ -> do
-          today <- utctDay <$> getCurrentTime
+        Just _ ->
+          case find ((== tblId) . tableId) (tables state) of
 
-          case buildReservation
-            today
-            (nextReservationId state)
-            custId
-            tblId
-            dateInput
-            timeInput
-            size of
+            Nothing ->
+              putStrLn ("No table with ID " ++ show tblId ++ ".")
 
-            Left err ->
-              putStrLn ("Invalid input: " ++ err)
+            Just tbl | tableStatus tbl /= Ready ->
+              putStrLn ("Table " ++ show tblId ++ " is under maintenance.")
 
-            Right reservation -> do
-              let updated =
-                    createReservation
-                      reservation
-                      (reservations state)
-
-              writeIORef stateRef state
-                { reservations = updated
-                , nextReservationId =
-                    nextReservationId state + 1
-                }
-
+            Just _ | isDoubleBooked tblId dateInput timeInput (reservations state) ->
               putStrLn
-                ( "Created reservation #"
-                ++ show (reservationId reservation)
-                ++ "."
+                ( "Table " ++ show tblId ++ " is already booked at "
+                ++ dateInput ++ " " ++ timeInput ++ "."
                 )
+
+            Just _ -> do
+              today <- utctDay <$> getCurrentTime
+
+              case buildReservation
+                today
+                (nextReservationId state)
+                custId
+                tblId
+                dateInput
+                timeInput
+                size of
+
+                Left err ->
+                  putStrLn ("Invalid input: " ++ err)
+
+                Right reservation -> do
+                  let updated =
+                        createReservation
+                          reservation
+                          (reservations state)
+
+                  writeIORef stateRef state
+                    { reservations = updated
+                    , nextReservationId =
+                        nextReservationId state + 1
+                    }
+
+                  putStrLn
+                    ( "Created reservation #"
+                    ++ show (reservationId reservation)
+                    ++ "."
+                    )
 
     _ ->
       putStrLn
@@ -445,12 +563,8 @@ listReservationsPrompt stateRef = do
       mapM_ print (reservations state)
 
 
--- =========================================================
--- MEMBER 3: TABLE MANAGEMENT
--- =========================================================
+-- Table Menu --------------------------------------------------------------
 
--- | Owner: Member 3. Table submenu -- view/add/update tables, check
--- availability. Looping until "Back".
 tableMenu :: IORef AppState -> IO ()
 tableMenu stateRef = do
   putStrLn "\n--- Tables ---"

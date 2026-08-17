@@ -6,7 +6,9 @@ module Types
   , Reservation(..)
   ) where
 
--- | A restaurant customer. Owner: Member 2.
+-- Customer -------------------------------------------------------------
+
+-- | A restaurant customer.
 data Customer = Customer
   { customerId    :: Int
   , customerName  :: String
@@ -14,7 +16,9 @@ data Customer = Customer
   , customerEmail :: String
   } deriving (Show, Eq)
 
--- | A restaurant table. Owner: Member 3.
+-- Table ------------------------------------------------------------------
+
+-- | A restaurant table.
 data TableStatus = Ready | UnderMaintenance
   deriving (Show, Eq)
 
@@ -24,11 +28,12 @@ data Table = Table
   , tableStatus   :: TableStatus
   } deriving (Show, Eq)
 
--- | Owner: Member 1.
+-- Reservation --------------------------------------------------------------
+
 data ReservationStatus = Active | Cancelled
   deriving (Show, Eq)
 
--- | A reservation linking a customer to a table at a date/time. Owner: Member 1.
+-- | A reservation linking a customer to a table at a date/time.
 data Reservation = Reservation
   { reservationId         :: Int
   , reservationCustomerId :: Int

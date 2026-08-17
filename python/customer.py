@@ -1,8 +1,4 @@
-"""Customer model + CRUD manager. Owner: Member 2.
-
-See docs/modules/customer.md for design notes, implementation write-up,
-and test cases this module feeds into.
-"""
+"""Customer model and CRUD manager."""
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -17,6 +13,8 @@ from validation import (
 UPDATABLE_FIELDS = {"name", "phone", "email"}
 
 
+# --- Model -------------------------------------------------------------
+
 @dataclass
 class Customer:
     id: int
@@ -24,6 +22,8 @@ class Customer:
     phone: str
     email: str
 
+
+# --- Manager -------------------------------------------------------------
 
 class CustomerManager:
     def __init__(self) -> None:

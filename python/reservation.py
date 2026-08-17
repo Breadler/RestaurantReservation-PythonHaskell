@@ -1,8 +1,4 @@
-"""Reservation model + CRUD manager. Owner: Member 1.
-
-See docs/modules/reservation.md for design notes, implementation write-up,
-and test cases this module feeds into.
-"""
+"""Reservation model and CRUD manager."""
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -11,6 +7,8 @@ from validation import ValidationError, validate_date, validate_party_size, vali
 
 UPDATABLE_FIELDS = {"customer_id", "table_id", "date", "time", "party_size"}
 
+
+# --- Model -------------------------------------------------------------
 
 @dataclass
 class Reservation:
@@ -23,17 +21,9 @@ class Reservation:
     status: str = "active"  # "active" or "cancelled"
 
 
+# --- Manager -------------------------------------------------------------
+
 class ReservationManager:
-    """CRUD for reservations.
-
-    This manager only validates its own fields (date/time/party_size). It
-    does not check that customer_id/table_id refer to real records, or
-    that the table is free at that date/time -- callers (e.g. main.py) are
-    expected to check those via CustomerManager.view() and
-    TableManager.is_double_booked() first. That keeps this module free of
-    any dependency on customer.py/table.py.
-    """
-
     def __init__(self) -> None:
         self._reservations: Dict[int, Reservation] = {}
         self._next_id: int = 1
@@ -68,12 +58,7 @@ class ReservationManager:
         return self._reservations.get(reservation_id)
 
     def update(self, reservation_id: int, **fields) -> Optional[Reservation]:
-        """Update one or more fields on an existing reservation.
-
-        Status changes go through cancel(), not update() -- keeping "edit
-        details" and "cancel" as separate operations matches the system
-        requirements (Update vs. Cancel Reservation).
-        """
+        """Update one or more fields on an existing reservation."""
         reservation = self._reservations.get(reservation_id)
         if reservation is None:
             return None

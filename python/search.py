@@ -1,13 +1,11 @@
-"""Search, filter, and (optional) reporting over reservations. Owner: Member 4.
-
-See docs/modules/search-reporting.md for design notes, implementation
-write-up, and test cases this module feeds into.
-"""
+"""Search, filter, and reporting over reservations."""
 
 from typing import List
 
 from reservation import Reservation
 
+
+# --- Search --------------------------------------------------------------
 
 def search_by_customer(reservations: List[Reservation], customer_id: int) -> List[Reservation]:
     """Return all reservations for a given customer."""
@@ -36,8 +34,10 @@ def filter_by_status(reservations: List[Reservation], status: str) -> List[Reser
     ]
 
 
+# --- Reporting -------------------------------------------------------------
+
 def daily_summary(reservations: List[Reservation], date: str) -> dict:
-    """Optional: total reservations and total guests for a given date."""
+    """Return total reservations and total guests for a given date."""
     daily_reservations = filter_by_date(reservations, date)
 
     return {
@@ -51,7 +51,7 @@ def daily_summary(reservations: List[Reservation], date: str) -> dict:
 
 
 def sort_by_time(reservations: List[Reservation]) -> List[Reservation]:
-    """Optional: return reservations sorted by date and time."""
+    """Return reservations sorted by date and time."""
     return sorted(
         reservations,
         key=lambda reservation: (

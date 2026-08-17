@@ -12,6 +12,9 @@ from search import (
     sort_by_time,
 )
 
+
+# --- Entry Point / Main Menu -----------------------------------------------
+
 def run() -> None:
     customers = CustomerManager()
     reservations = ReservationManager()
@@ -49,6 +52,8 @@ def run() -> None:
         except ValidationError as exc:
             print(f"Invalid input: {exc}")
 
+
+# --- Customer Menu ----------------------------------------------------------
 
 def customer_menu(customers: CustomerManager) -> None:
     while True:
@@ -121,6 +126,8 @@ def _list_customers_prompt(customers: CustomerManager) -> None:
         print(customer)
 
 
+# --- Reservation Menu --------------------------------------------------------
+
 def reservation_menu(
     reservations: ReservationManager,
     tables: TableManager,
@@ -170,6 +177,14 @@ def _create_reservation_prompt(
         return
 
     table_id = int(input("Table ID: ").strip())
+    table = tables.view(table_id)
+    if table is None:
+        print(f"No table with ID {table_id}.")
+        return
+    if table.status != "Active":
+        print(f"Table {table_id} is under maintenance.")
+        return
+
     date = input("Date (YYYY-MM-DD): ").strip()
     time = input("Time (HH:MM): ").strip()
     party_size = int(input("Party size: ").strip())
@@ -212,6 +227,8 @@ def _list_reservations_prompt(reservations: ReservationManager) -> None:
         print(reservation)
 
 
+# --- Table Menu ---------------------------------------------------------------
+
 def table_menu(tables: TableManager, reservations: ReservationManager) -> None:
     """Table management submenu: view/add/update tables, check availability."""
     while True:
@@ -222,34 +239,26 @@ def table_menu(tables: TableManager, reservations: ReservationManager) -> None:
         print("4. Update table (capacity/status)")
         print("5. Back")
         choice = input("Choose an option: ").strip()
-        print(f"[DEBUG] You selected: '{choice}'", flush=True)
 
         try:
             if choice == "5":
                 return
             elif choice == "1":
-                print("[DEBUG] Executing option 1: View all tables", flush=True)
                 _view_all_tables_prompt(tables)
             elif choice == "2":
-                print("[DEBUG] Executing option 2: Check availability", flush=True)
-                try:
-                    _check_availability_prompt(tables, reservations)
-                except NotImplementedError:
-                    print("That part isn't implemented yet (waiting on another module).")
+                _check_availability_prompt(tables, reservations)
             elif choice == "3":
-                print("[DEBUG] Executing option 3: Add new table", flush=True)
                 _add_table_prompt(tables)
             elif choice == "4":
-                print("[DEBUG] Executing option 4: Update table", flush=True)
                 _update_table_prompt(tables)
             else:
                 print("Invalid choice.")
         except ValidationError as exc:
             print(f"Invalid input: {exc}")
+        except NotImplementedError:
+            print("That part isn't implemented yet (waiting on another module).")
         except ValueError:
             print("Please enter a whole number where one is expected.")
-        except Exception as e:
-            print(f"Error: {e}")
 
 
 def _view_all_tables_prompt(tables: TableManager) -> None:
@@ -301,8 +310,8 @@ def _add_table_prompt(tables: TableManager) -> None:
 def _update_table_prompt(tables: TableManager) -> None:
     """Update an existing table's capacity or status."""
     table_id = int(input("Table ID: ").strip())
-    table = tables.view(table_id) if hasattr(tables, 'view') else None
-    
+    table = tables.view(table_id)
+
     if table is None:
         print(f"Table {table_id} not found.")
         return
@@ -329,6 +338,8 @@ def _update_table_prompt(tables: TableManager) -> None:
     else:
         print("Invalid field. Use 'capacity' or 'status'.")
 
+
+# --- Search & Reports Menu -----------------------------------------------------
 
 def search_menu(reservations: ReservationManager) -> None:
     while True:

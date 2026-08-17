@@ -9,8 +9,7 @@ module Search
 import Types (Reservation(..), ReservationStatus(..))
 import Data.List (sortOn)
 
--- | Owner: Member 4. See docs/modules/search-reporting.md for design
--- notes, implementation write-up, and test cases this module feeds into.
+-- Search ---------------------------------------------------------------
 
 searchByCustomer :: Int -> [Reservation] -> [Reservation]
 searchByCustomer customerId reservations =
@@ -36,7 +35,9 @@ filterByStatus status reservations =
         )
         reservations
 
--- | Optional: total reservations and total guests for a given date.
+-- Reporting ------------------------------------------------------------
+
+-- | Total reservations and total guests for a given date.
 dailySummary :: String -> [Reservation] -> (Int, Int)
 dailySummary date reservations =
     let dailyReservations = filterByDate date reservations
@@ -45,7 +46,7 @@ dailySummary date reservations =
     in
         (totalReservations, totalGuests)
 
--- | Optional: sort reservations by date then time.
+-- | Sort reservations by date then time.
 sortByTime :: [Reservation] -> [Reservation]
 sortByTime reservations =
     sortOn
